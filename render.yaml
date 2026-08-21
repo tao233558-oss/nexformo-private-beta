@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: nexformo-private-beta
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_BUILD_ID
+        value: render-private-beta
+      - key: PUBLIC_ORIGIN
+        sync: false
+      - key: BETA_ACCESS_CODE
+        sync: false
+      - key: BETA_SESSION_SECRET
+        generateValue: true
+      - key: AI_PROVIDER
+        value: deepseek
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_MODEL
+        value: deepseek-v4-flash
+      - key: ENABLE_WEB_SEARCH
+        value: "true"
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: DOUBAO_SPEECH_API_KEY
+        sync: false
+      - key: DOUBAO_SPEECH_APP_ID
+        sync: false
+      - key: DOUBAO_ASR_RESOURCE_ID
+        value: volc.bigasr.sauc.duration
+      - key: DOUBAO_TTS_RESOURCE_ID
+        value: seed-tts-2.0
+      - key: DOUBAO_TTS_VOICE
+        sync: false
