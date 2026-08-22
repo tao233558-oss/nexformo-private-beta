@@ -106,9 +106,9 @@ Render、Railway、Fly.io 或一台普通云服务器都可以。构建命令为
 
 ## 10. 部署记录
 
-- GitHub 仓库：等待用户确认目标账号和私有仓库名
-- Render 服务：尚未创建
-- 公网 HTTPS 地址：尚未生成
-- 最近公网验收：尚未执行
+- GitHub 仓库：[`tao233558-oss/nexformo-private-beta`](https://github.com/tao233558-oss/nexformo-private-beta)（私有）
+- Render 服务：`nexformo-private-beta`（Node Free，Oregon）
+- 公网 HTTPS 地址：[`https://nexformo-private-beta.onrender.com`](https://nexformo-private-beta.onrender.com)
+- 最近公网验收：2026-08-22；已在干净浏览器完成邀请码入口、进入世界、DeepSeek 对话、联网来源、YouTube 自动播放、同步歌词、播放器拖动/收展、左右侧栏收展和粒子形态切换。健康检查为 `ok`，生产模式下已配置朋友智能、联网搜索、YouTube 搜索/播放、歌词与豆包语音。
 
 只有在实际部署成功并使用干净浏览器完成验收后，才把以上三项更新为真实值。
