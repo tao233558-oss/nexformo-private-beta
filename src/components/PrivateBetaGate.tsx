@@ -143,9 +143,22 @@ function AccessScreen({ available, onGranted, onDisclosure }: { available: boole
         <p className="mt-5 max-w-sm text-[12px] font-light leading-7 text-white/46">当前版本仅向受邀测试者开放。邀请码只用于建立浏览器会话，不会写入页面存储。</p>
 
         <form onSubmit={submit} className="mt-8">
-          <label htmlFor="beta-access-code" className="text-[9px] uppercase tracking-[0.18em] text-white/36">私测邀请码</label>
+          <label htmlFor="beta-access-code" className="text-[9px] uppercase tracking-[0.18em] text-white/36">私测访问码（不是账号密码）</label>
           <div className="mt-3 flex items-center border-b border-white/25 pb-2 focus-within:border-white/70">
-            <input id="beta-access-code" value={code} onChange={(event) => setCode(event.target.value.slice(0, 256))} disabled={busy || !available} autoComplete="one-time-code" autoFocus type="password" className="min-w-0 flex-1 bg-transparent py-2 text-base font-light tracking-[0.12em] text-white outline-none placeholder:text-white/20" placeholder="输入邀请码" />
+            <input
+              id="beta-access-code"
+              name="beta-access-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value.slice(0, 64))}
+              disabled={busy || !available}
+              autoComplete="one-time-code"
+              autoFocus
+              type="text"
+              inputMode="numeric"
+              spellCheck={false}
+              className="min-w-0 flex-1 bg-transparent py-2 text-base font-light tracking-[0.12em] text-white outline-none placeholder:text-white/20"
+              placeholder="输入测试访问码"
+            />
             <button type="submit" disabled={!code.trim() || busy || !available} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 text-white/70 transition hover:border-white hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-25" aria-label="验证邀请码">{busy ? <LoaderCircle size={13} className="animate-spin" /> : <ArrowRight size={13} />}</button>
           </div>
         </form>
