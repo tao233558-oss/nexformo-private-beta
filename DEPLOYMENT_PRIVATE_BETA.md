@@ -7,7 +7,7 @@
 仓库根目录的 `render.yaml` 描述一个 Render Node Web Service：
 
 - 套餐：Free，适合少量受邀测试；空闲后可能休眠，首次唤醒会较慢。
-- 构建：`npm ci && npm run build`
+- 构建：`npm ci --include=dev && npm run build`（Render 在生产环境构建时仍需安装 Vite、TypeScript 与 esbuild）
 - 启动：`npm run start`
 - 健康检查：`GET /api/health`
 - Node.js：由 `package.json` 限定为 `>=20 <25`，避免未来自动升级到不兼容的大版本。
