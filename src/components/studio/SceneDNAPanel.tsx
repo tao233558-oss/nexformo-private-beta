@@ -189,9 +189,10 @@ export default function SceneDNAPanel({
         <div className="mt-5 border-t border-white/10 pt-4" data-weather-controls="active">
           <div className="flex items-center justify-between">
             <p className="studio-field-label">环境天气</p>
-            <span className="font-mono text-[8px] uppercase tracking-[0.12em] text-white/35">
-              {weather.state.locked ? "已锁定" : weather.state.autonomyEnabled ? "Sol 自主" : "手动"}
-            </span>
+            <div className="text-right font-mono text-[8px] uppercase tracking-[0.12em] text-white/35">
+              <span className="block">{weather.state.locked ? "已锁定" : weather.state.autonomyEnabled ? "Sol 自主" : "手动"}</span>
+              <span className="mt-0.5 block text-white/20">演示天气数据</span>
+            </div>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
             {SOL_WEATHER_MODES.map((mode) => (

@@ -1,0 +1,3 @@
+# Rainform browser bundles are generated artifacts. Keep their bytes unchanged
+# and avoid source-style whitespace checks or platform newline conversion.
+public/rainform/assets/* binary

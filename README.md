@@ -120,6 +120,32 @@ npm.cmd run start
 
 `npm.cmd run start` serves the production build after `npm.cmd run build`.
 
+## Rainform noncommercial experiment
+
+The optional “数据成雨” studio mode embeds a separately identified, locally hosted build derived from
+[Rainform / 数据成雨](https://github.com/afterimage-lab/Rainform) by afterimage. It is included only for
+noncommercial evaluation under the PolyForm Noncommercial License 1.0.0 and is not an official collaboration.
+The preserved source, license, notices, integration policy, and commercial-use policy live in
+[`vendor/rainform`](./vendor/rainform). Rainform-derived material must not be used commercially without
+written permission from its maintainer.
+
+### Real-weather data and location privacy
+
+Rainform starts in **Creative Demo** mode, whose editable rainfall curve is fictional and clearly labelled.
+The optional **Real Weather** mode obtains city search and hourly/current forecasts through the Nexformo
+server from Open-Meteo; city-search names use GeoNames data. After an explicit click, browser coordinates
+may also be sent to the Nexformo server for the same forecast and for a human-readable place-name lookup.
+Geolocation-derived coordinates are not written to localStorage or included in Sol's memory context. If the
+place-name lookup fails, the forecast can still load under the calm `当前位置` fallback.
+
+Reverse-geocoded names currently come from the public OpenStreetMap Nominatim service and are attributed in
+the interface. Requests are serialized to at most one upstream call per second, rounded-coordinate lookups
+are deduplicated and cached for seven days, and no bulk, autocomplete, periodic, or background lookup is
+performed. `NEXFORMO_REVERSE_GEOCODING_URL` can replace the endpoint, and the existing server proxy is reused
+when configured. Public Nominatim is appropriate only for this small noncommercial private beta: use a
+self-hosted or contracted provider before commercial launch or high traffic. Forecasts may be live, cached
+and stale, or unavailable; every state remains labelled and weather information is for reference only.
+
 ## Private beta deployment
 
 The optional production access gate, privacy disclosure, security headers, safe health check, YouTube failure recovery, Render Blueprint, and release checklist are documented in [DEPLOYMENT_PRIVATE_BETA.md](./DEPLOYMENT_PRIVATE_BETA.md). Leave `BETA_ACCESS_CODE` empty for ordinary local development. Production secrets belong only in the hosting dashboard; `render.yaml` never contains an invitation code or API key value.

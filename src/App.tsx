@@ -23,6 +23,11 @@ import type {
   CompanionMood,
   CompanionTurnResponse,
 } from "../shared/companion";
+import {
+  formatSolForecastContext,
+  isForecastQuestion,
+  type WeatherForecast,
+} from "../shared/liveWeather";
 import { deriveSolExpression } from "../shared/solEmotion";
 import StudioMode from "./components/studio/StudioMode";
 import MusicExperience from "./components/studio/MusicExperience";
@@ -30,6 +35,7 @@ import SolPresenceControls from "./components/studio/SolPresenceControls";
 import SolEmotionDebugPanel from "./components/studio/SolEmotionDebugPanel";
 import MemoryConstellation from "./components/studio/MemoryConstellation";
 import WorldArchive from "./components/studio/WorldArchive";
+import RainformExperience from "./components/studio/RainformExperience";
 import { usePrivateBeta } from "./components/PrivateBetaGate";
 import { useWorldArchive } from "./hooks/useWorldArchive";
 import { useCompanion } from "./hooks/useCompanion";
@@ -43,6 +49,7 @@ import { useReducedMotion } from "./hooks/useReducedMotion";
 import { useWorldHistory } from "./hooks/useWorldHistory";
 import type { EngineSource, WorldArchiveEntry } from "./lib/world";
 import { shouldAllowProactiveMessage } from "./lib/solPresenceController";
+import { nextRainformEscapeTarget } from "./lib/rainformControls";
 
 const ParticleCanvas = lazy(() => import("./components/ParticleCanvas"));
 
@@ -148,6 +155,9 @@ function App() {
   const [conversationCollapsed, setConversationCollapsed] = useState(false);
   const [timelineVisible, setTimelineVisible] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
+  const [rainformOpen, setRainformOpen] = useState(false);
+  const [rainformVoiceOpen, setRainformVoiceOpen] = useState(false);
+  const [rainformForecast, setRainformForecast] = useState<WeatherForecast | null>(null);
   const [cursorVisible, setCursorVisible] = useState(true);
   const [toast, setToast] = useState("");
   const [stageReplyVisible, setStageReplyVisible] = useState(false);
@@ -164,7 +174,7 @@ function App() {
     companion: companion.state,
     emotion: emotion.state,
     doNotDisturb: presence.preferences.doNotDisturb,
-    overlayOpen: menuOpen || archiveOpen || memoryOpen,
+    overlayOpen: menuOpen || archiveOpen || memoryOpen || rainformOpen,
     busy: evolutionBusy || companion.busy,
     studioActive: mode === "studio",
     onManualChange: emotion.noteManualWeather,
@@ -310,6 +320,36 @@ function App() {
           notice: "Sol 本地记忆系统",
         };
       }
+      if (rainformForecast && isForecastQuestion(instruction)) {
+        const forecastMessage = formatSolForecastContext(rainformForecast);
+        lastConversationAt.current = Date.now();
+        proactiveCount.current = 0;
+        companion.appendLocalExchange(instruction, forecastMessage, inputMode);
+        const companionState = companion.state;
+        return {
+          displayReply: forecastMessage,
+          spokenReply: forecastMessage,
+          songLyrics: "",
+          intent: "conversation",
+          emotion: {
+            primaryMood: companionState.primaryMood,
+            valence: companionState.valence,
+            arousal: companionState.arousal,
+            energy: companionState.energy,
+            curiosity: companionState.curiosity,
+          },
+          scene: activeSnapshot.scene,
+          explanation: "Sol 读取 Rainform 当前已选择地点的同一份预报快照，没有发起第二条天气查询。",
+          suggestions: activeSnapshot.suggestions,
+          memoryCandidate: null,
+          motionCue: null,
+          nextCompanionState: companionState,
+          webUsed: true,
+          sources: [{ title: "Open-Meteo weather forecast", url: rainformForecast.providerUrl }],
+          source: "local",
+          notice: rainformForecast.status === "stale" ? "Sol · 缓存天气预报" : "Sol · 实时天气预报",
+        };
+      }
       emotion.noteUserMessage(instruction);
       const weatherResult = weather.executeText(instruction);
       if (typeof weatherResult.focusMode === "boolean") setFocusMode(weatherResult.focusMode);
@@ -380,6 +420,7 @@ function App() {
       solMemory.clearMemories,
       solMemory.executeText,
       solMemory.memories.length,
+      rainformForecast,
       weather.executeText,
       worldHistory.current,
     ],
@@ -388,6 +429,17 @@ function App() {
   const voice = useRealtimeVoice({
     onVoiceTurn: (message) => handleUserTurn(message, "voice"),
   });
+
+  const closeRainformVoice = useCallback(() => {
+    voice.stop();
+    setRainformVoiceOpen(false);
+  }, [voice.stop]);
+
+  const closeRainform = useCallback(() => {
+    voice.stop();
+    setRainformVoiceOpen(false);
+    setRainformOpen(false);
+  }, [voice.stop]);
 
   useEffect(() => setVoiceMotionActivity(voice.activity), [voice.activity]);
 
@@ -447,8 +499,8 @@ function App() {
   }, [music.playback.status, voice.enabled, voice.stop, voice.stopSpeaking]);
 
   useEffect(() => {
-    if ((menuOpen || archiveOpen) && music.playback.status === "playing") music.pause();
-  }, [archiveOpen, menuOpen, music.pause, music.playback.status]);
+    if ((menuOpen || archiveOpen || rainformOpen) && music.playback.status === "playing") music.pause();
+  }, [archiveOpen, menuOpen, music.pause, music.playback.status, rainformOpen]);
 
   useEffect(() => {
     if (mode !== "studio") return;
@@ -474,7 +526,7 @@ function App() {
           cooldownMs: waitTime,
           doNotDisturb: presence.preferences.doNotDisturb,
           musicStatus: music.playback.status,
-          overlayOpen: menuOpen || archiveOpen || memoryOpen,
+          overlayOpen: menuOpen || archiveOpen || memoryOpen || rainformOpen,
           busy: evolutionBusy,
         })
       ) {
@@ -503,6 +555,7 @@ function App() {
     menuOpen,
     memoryOpen,
     mode,
+    rainformOpen,
     voice.activity,
     voice.enabled,
     voice.muted,
@@ -514,11 +567,11 @@ function App() {
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
-    if (menuOpen || archiveOpen || memoryOpen) document.body.style.overflow = "hidden";
+    if (menuOpen || archiveOpen || memoryOpen || rainformOpen) document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [archiveOpen, memoryOpen, menuOpen]);
+  }, [archiveOpen, memoryOpen, menuOpen, rainformOpen]);
 
   useEffect(() => {
     if (!focusMode) {
@@ -547,7 +600,10 @@ function App() {
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
 
       if (event.key === "Escape") {
-        if (memoryOpen) setMemoryOpen(false);
+        const rainformEscapeTarget = nextRainformEscapeTarget(rainformVoiceOpen, rainformOpen);
+        if (rainformEscapeTarget === "voice") closeRainformVoice();
+        else if (rainformEscapeTarget === "rainform") closeRainform();
+        else if (memoryOpen) setMemoryOpen(false);
         else if (archiveOpen) setArchiveOpen(false);
         else if (menuOpen) setMenuOpen(false);
         else if (focusMode) setFocusMode(false);
@@ -577,7 +633,7 @@ function App() {
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [archiveOpen, focusMode, memoryOpen, menuOpen, mode, worldHistory.redo, worldHistory.undo]);
+  }, [archiveOpen, closeRainform, closeRainformVoice, focusMode, memoryOpen, menuOpen, mode, rainformOpen, rainformVoiceOpen, worldHistory.redo, worldHistory.undo]);
 
   useEffect(
     () => () => {
@@ -734,6 +790,7 @@ function App() {
       data-experience-status={mode === "studio" ? "studio" : status}
       data-weather-mode={weather.state.mode}
       data-weather-transition={weather.state.transition}
+      data-weather-source="demo"
       data-sol-gesture={presence.state.motionPlan.primary.gesture}
       data-sol-motion-source={presence.state.motionPlan.primary.source}
       data-sol-music-ritual={presence.state.musicRitual.ritual}
@@ -741,7 +798,7 @@ function App() {
       data-reduced-motion={reducedMotion ? "true" : "false"}
     >
       <Suspense fallback={<div className="absolute inset-0 bg-black" aria-hidden="true" />}>
-        <ParticleCanvas
+        {!rainformOpen && <ParticleCanvas
           scene={activeScene}
           generating={status === "generating" || evolutionBusy}
           experienceMode={focusMode ? "focus" : mode}
@@ -760,7 +817,7 @@ function App() {
             presence.noteInteraction(interaction);
             emotion.noteInteraction(interaction === "doubleClick" ? 0.8 : 0.35);
           }}
-        />
+        />}
       </Suspense>
 
       {mode !== "studio" && (
@@ -970,6 +1027,14 @@ function App() {
           }}
           onSaveWorld={saveCurrentWorld}
           onFocusModeChange={setFocusMode}
+          onOpenRainform={() => {
+            setFocusMode(false);
+            setArchiveOpen(false);
+            setMemoryOpen(false);
+            setMenuOpen(false);
+            setRainformVoiceOpen(voice.enabled);
+            setRainformOpen(true);
+          }}
           onNewWorld={startNewWorld}
         />
       )}
@@ -1078,6 +1143,22 @@ function App() {
           </nav>
         </div>
       </div>
+
+      <RainformExperience
+        open={rainformOpen}
+        voiceModeOpen={rainformVoiceOpen}
+        voiceActivity={voice.activity}
+        voiceEnabled={voice.enabled}
+        voiceError={voice.error}
+        voiceAudioLevel={voice.audioLevel}
+        voiceLabel={voice.voiceLabel}
+        onVoiceModeOpenChange={setRainformVoiceOpen}
+        onStartVoice={voice.start}
+        onStopVoice={voice.stop}
+        onStopSpeaking={voice.stopSpeaking}
+        onForecastChange={setRainformForecast}
+        onClose={closeRainform}
+      />
     </section>
   );
 }

@@ -155,6 +155,7 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
   const playbackMeterRef = useRef<number | null>(null);
   const officialSongReadyRef = useRef<boolean | null>(null);
   const submitRecordingRef = useRef<(chunks: Float32Array[], sampleRate: number) => void>(() => {});
+  const startAttemptRef = useRef(0);
 
   useEffect(() => {
     onVoiceTurnRef.current = onVoiceTurn;
@@ -176,6 +177,7 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
   }, []);
 
   const stop = useCallback(() => {
+    startAttemptRef.current += 1;
     enabledRef.current = false;
     busyRef.current = false;
     speechStartedRef.current = false;
@@ -638,6 +640,7 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
 
   const start = useCallback(async () => {
     if (enabledRef.current) return;
+    const startAttempt = ++startAttemptRef.current;
     setActivity("connecting");
     setError("");
     try {
@@ -645,6 +648,7 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
         signal: AbortSignal.timeout(8_000),
       });
       const capabilities = (await capabilityResponse.json()) as VoiceCapabilities;
+      if (startAttempt !== startAttemptRef.current) return;
       if (!capabilityResponse.ok || !capabilities.ready || capabilities.provider !== "doubao") {
         if (startBrowserFallback()) return;
         throw new Error("豆包语音尚未完成配置，当前浏览器也没有可用的后备语音。");
@@ -657,6 +661,10 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      if (startAttempt !== startAttemptRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const AudioContextConstructor =
         window.AudioContext ||
         (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -671,6 +679,11 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
       }
       const context = new AudioContextConstructor();
       if (context.state === "suspended") await context.resume();
+      if (startAttempt !== startAttemptRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        await context.close();
+        return;
+      }
       const source = context.createMediaStreamSource(stream);
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
@@ -734,6 +747,7 @@ export function useRealtimeVoice({ onVoiceTurn }: UseRealtimeVoiceOptions) {
         submitRecordingRef.current(completedChunks, context.sampleRate);
       };
     } catch (startError) {
+      if (startAttempt !== startAttemptRef.current) return;
       const errorName = startError instanceof DOMException ? startError.name : "";
       stop();
       if (errorName === "NotAllowedError" || errorName === "SecurityError") {

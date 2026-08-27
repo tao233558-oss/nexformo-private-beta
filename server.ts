@@ -40,6 +40,11 @@ import {
 } from "./shared/music";
 import { sanitizeSolMemoryContext } from "./shared/solMemory";
 import {
+  normalizeWeatherSearchResponse,
+  type WeatherForecast,
+  type WeatherLocation,
+} from "./shared/liveWeather";
+import {
   DEFAULT_SCENE,
   VISUAL_EVOLUTION_JSON_SCHEMA,
   VISUAL_SCENE_JSON_SCHEMA,
@@ -60,6 +65,13 @@ import {
   productionContentSecurityPolicy,
   resolvePrivateBetaConfig,
 } from "./serverSecurity";
+import {
+  WeatherProviderError,
+  fetchOpenMeteoForecast,
+  resolveReverseGeocodedLocation,
+  resolveWeatherLocationWithFallback,
+  searchOpenMeteoLocations,
+} from "./serverWeather";
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -74,7 +86,7 @@ app.use((_request, response, next) => {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(), geolocation=(), microphone=(self), payment=(), usb=()",
+    "Permissions-Policy": "camera=(), geolocation=(self), microphone=(self), payment=(), usb=()",
     "Cross-Origin-Opener-Policy": "same-origin",
   });
   if (isProduction) {
@@ -232,6 +244,17 @@ const musicSearchCache = new Map<string, CacheEntry<MusicSearchResult[]>>();
 const lyricsCache = new Map<string, CacheEntry<LyricResult>>();
 const musicSearchInFlight = new Map<string, Promise<MusicSearchResult[]>>();
 const lyricsInFlight = new Map<string, Promise<LyricResult>>();
+const weatherSearchCache = new Map<string, CacheEntry<WeatherLocation[]>>();
+const weatherSearchInFlight = new Map<string, Promise<WeatherLocation[]>>();
+
+type WeatherForecastCacheEntry = {
+  value: WeatherForecast;
+  freshUntil: number;
+  staleUntil: number;
+};
+
+const weatherForecastCache = new Map<string, WeatherForecastCacheEntry>();
+const weatherForecastInFlight = new Map<string, Promise<WeatherForecast>>();
 
 const getCachedValue = <T>(cache: Map<string, CacheEntry<T>>, key: string) => {
   const entry = cache.get(key);
@@ -260,6 +283,45 @@ const setCachedValue = <T>(
     cache.delete(oldestKey);
   }
   cache.set(key, { value, expiresAt: now + ttlMs });
+};
+
+const weatherForecastCacheKey = (location: WeatherLocation) =>
+  `${location.latitude.toFixed(4)},${location.longitude.toFixed(4)}`;
+
+const pruneWeatherForecastCache = (now = Date.now()) => {
+  for (const [key, entry] of weatherForecastCache) {
+    if (entry.staleUntil <= now) weatherForecastCache.delete(key);
+  }
+  while (weatherForecastCache.size > 80) {
+    const oldestKey = weatherForecastCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    weatherForecastCache.delete(oldestKey);
+  }
+};
+
+const safeWeatherRequestLocation = (request: Request): WeatherLocation | null => {
+  const latitude = Number(request.query.latitude);
+  const longitude = Number(request.query.longitude);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  const source = request.query.source === "geolocation" ? "geolocation" : "search";
+  const locations = normalizeWeatherSearchResponse({
+    results: [{
+      id: typeof request.query.id === "string" ? request.query.id : `${latitude},${longitude}`,
+      name: typeof request.query.name === "string"
+        ? request.query.name
+        : source === "geolocation" ? "当前位置" : "所选城市",
+      admin1: typeof request.query.region === "string" ? request.query.region : "",
+      country: typeof request.query.country === "string" ? request.query.country : "",
+      country_code: typeof request.query.countryCode === "string" ? request.query.countryCode : "",
+      latitude,
+      longitude,
+      timezone: typeof request.query.timezone === "string" ? request.query.timezone : "UTC",
+    }],
+  });
+  const location = locations[0];
+  if (!location) return null;
+  return { ...location, source };
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -1188,6 +1250,7 @@ app.get("/api/health", (_request: Request, response: Response) => {
       youtubeSearch: Boolean(getYouTubeApiKey()),
       youtubePlayback: true,
       lyrics: true,
+      weatherForecast: true,
       doubaoSpeech: doubaoSpeechReady,
       doubaoSong: Boolean(getDoubaoSongAppKey() && getDoubaoSongToken()),
       openAIRealtime: Boolean(getOpenAIApiKey()),
@@ -1245,6 +1308,135 @@ app.use("/api", (request: Request, response: Response, next: NextFunction) => {
     code: "BETA_ACCESS_REQUIRED",
     error: "需要有效的私测邀请才能使用在线能力。",
   });
+});
+
+app.get("/api/weather/search", async (request: Request, response: Response) => {
+  if (!allowRequest(request, 30, 60_000, "weather-search")) {
+    noStore(response).status(429).json({
+      success: false,
+      status: "unavailable",
+      code: "WEATHER_SEARCH_RATE_LIMITED",
+      error: "城市搜索太频繁了，请稍后再试。",
+    });
+    return;
+  }
+  const query = typeof request.query.q === "string" ? request.query.q.trim().replace(/\s+/g, " ") : "";
+  if (query.length < 2 || query.length > 80 || /[\u0000-\u001f\u007f]/.test(query)) {
+    noStore(response).status(400).json({
+      success: false,
+      status: "unavailable",
+      code: "WEATHER_SEARCH_INVALID",
+      error: "请至少输入两个字符，并把城市名称控制在 80 个字符以内。",
+    });
+    return;
+  }
+
+  const cacheKey = query.toLocaleLowerCase();
+  const cached = getCachedValue(weatherSearchCache, cacheKey);
+  if (cached) {
+    noStore(response).json({ success: true, provider: "open-meteo", results: cached });
+    return;
+  }
+
+  try {
+    const existing = weatherSearchInFlight.get(cacheKey);
+    const pending = existing ?? searchOpenMeteoLocations(query)
+      .then((results) => {
+        setCachedValue(weatherSearchCache, cacheKey, results, 15 * 60_000, 120);
+        return results;
+      })
+      .finally(() => weatherSearchInFlight.delete(cacheKey));
+    if (!existing) weatherSearchInFlight.set(cacheKey, pending);
+    const results = await pending;
+    noStore(response).json({ success: true, provider: "open-meteo", results });
+  } catch (error) {
+    const providerError = error instanceof WeatherProviderError ? error : null;
+    noStore(response).status(providerError?.code === "TIMEOUT" ? 504 : 502).json({
+      success: false,
+      status: "unavailable",
+      code: providerError?.code === "TIMEOUT" ? "WEATHER_SEARCH_TIMEOUT" : "WEATHER_SEARCH_UNAVAILABLE",
+      error: providerError?.message || "城市搜索暂时不可用。",
+    });
+  }
+});
+
+app.get("/api/weather/forecast", async (request: Request, response: Response) => {
+  if (!allowRequest(request, 24, 60_000, "weather-forecast")) {
+    noStore(response).status(429).json({
+      success: false,
+      status: "unavailable",
+      code: "WEATHER_FORECAST_RATE_LIMITED",
+      error: "天气请求太频繁了，请稍后再试。",
+    });
+    return;
+  }
+  const requestedLocation = safeWeatherRequestLocation(request);
+  if (!requestedLocation) {
+    noStore(response).status(400).json({
+      success: false,
+      status: "unavailable",
+      code: "WEATHER_LOCATION_INVALID",
+      error: "天气位置参数无效。",
+    });
+    return;
+  }
+
+  let location = requestedLocation;
+  if (requestedLocation.source === "geolocation") {
+    const dispatcher = getYouTubeDispatcher();
+    const providerFetchInit = dispatcher ? ({ dispatcher } as RequestInit) : {};
+    location = await resolveWeatherLocationWithFallback(
+      requestedLocation,
+      (candidate) => resolveReverseGeocodedLocation(candidate, providerFetchInit),
+      (error) => {
+        // Forecasts remain useful when the optional human-readable place lookup fails.
+        const message = error instanceof Error ? error.message : "unknown reverse geocoding error";
+        console.warn(`Weather place-name lookup unavailable: ${message.slice(0, 160)}`);
+      },
+    );
+  }
+
+  pruneWeatherForecastCache();
+  const cacheKey = weatherForecastCacheKey(location);
+  const cached = weatherForecastCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.freshUntil > now) {
+    noStore(response).json({ success: true, forecast: { ...cached.value, location, status: "live" } });
+    return;
+  }
+
+  try {
+    const existing = weatherForecastInFlight.get(cacheKey);
+    const pending = existing ?? fetchOpenMeteoForecast(location, "live", now)
+      .then((forecast) => {
+        weatherForecastCache.set(cacheKey, {
+          value: forecast,
+          freshUntil: now + 12 * 60_000,
+          staleUntil: now + 2 * 60 * 60_000,
+        });
+        pruneWeatherForecastCache(now);
+        return forecast;
+      })
+      .finally(() => weatherForecastInFlight.delete(cacheKey));
+    if (!existing) weatherForecastInFlight.set(cacheKey, pending);
+    const forecast = await pending;
+    noStore(response).json({ success: true, forecast: { ...forecast, location } });
+  } catch (error) {
+    if (cached && cached.staleUntil > now) {
+      noStore(response).json({
+        success: true,
+        forecast: { ...cached.value, location, status: "stale", expiresAt: cached.staleUntil },
+      });
+      return;
+    }
+    const providerError = error instanceof WeatherProviderError ? error : null;
+    noStore(response).status(providerError?.code === "TIMEOUT" ? 504 : 502).json({
+      success: false,
+      status: "unavailable",
+      code: providerError?.code === "TIMEOUT" ? "WEATHER_FORECAST_TIMEOUT" : "WEATHER_FORECAST_UNAVAILABLE",
+      error: providerError?.message || "天气预报暂时不可用。",
+    });
+  }
 });
 
 app.post("/api/visual-scene", async (request: Request, response: Response) => {

@@ -97,6 +97,7 @@ test("production CSP permits the official YouTube embed without unsafe script ex
   const policy = productionContentSecurityPolicy();
   assert.match(policy, /script-src 'self' https:\/\/www\.youtube\.com/);
   assert.match(policy, /frame-src https:\/\/www\.youtube\.com/);
+  assert.match(policy, /frame-src [^;]*'self'/);
   assert.doesNotMatch(policy, /unsafe-eval/);
   assert.doesNotMatch(policy, /script-src[^;]*\*/);
 });

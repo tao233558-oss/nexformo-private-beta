@@ -1,4 +1,4 @@
-import { Archive, Bookmark, Focus, LogOut, Sparkles, X } from "lucide-react";
+import { Archive, Bookmark, CloudRain, Focus, LogOut, Sparkles, X } from "lucide-react";
 import type {
   CompanionMessage,
   VoiceActivity,
@@ -55,6 +55,7 @@ type StudioModeProps = {
   onOpenMemory: () => void;
   onSaveWorld: () => void;
   onFocusModeChange: (focus: boolean) => void;
+  onOpenRainform: () => void;
   onNewWorld: () => void;
 };
 
@@ -109,6 +110,7 @@ export default function StudioMode({
   onOpenMemory,
   onSaveWorld,
   onFocusModeChange,
+  onOpenRainform,
   onNewWorld,
 }: StudioModeProps) {
   const privateBeta = usePrivateBeta();
@@ -163,6 +165,9 @@ export default function StudioMode({
               </button>
               <button type="button" onClick={() => onFocusModeChange(true)} className="studio-header-link">
                 <Focus size={12} /> 沉浸
+              </button>
+              <button type="button" onClick={onOpenRainform} className="studio-header-link">
+                <CloudRain size={12} /> 数据成雨
               </button>
               <button type="button" onClick={onNewWorld} className="studio-header-link text-white/25 hover:text-white/70">
                 <LogOut size={12} /> 新世界

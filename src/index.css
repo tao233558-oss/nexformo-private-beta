@@ -651,6 +651,106 @@ textarea:focus-visible {
   }
 }
 
+.rainform-volume-range {
+  width: 100%;
+  height: 18px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rainform-volume-range::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.rainform-volume-range::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: -5.5px;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 999px;
+  background: #dcefff;
+  box-shadow: 0 0 18px rgba(116, 207, 255, 0.48);
+}
+
+.rainform-volume-range::-moz-range-track {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.rainform-volume-range::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 999px;
+  background: #dcefff;
+}
+
+.rainform-sol-orb {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 50px;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(214, 235, 255, 0.36);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.55), transparent 18%),
+    radial-gradient(circle at 50% 58%, rgba(96, 193, 255, 0.36), rgba(54, 27, 108, 0.34) 58%, rgba(0, 0, 0, 0.8));
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 22px rgba(172, 220, 255, 0.22), 0 0 26px rgba(97, 172, 255, 0.22);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.rainform-sol-orb:hover {
+  transform: scale(1.04);
+  border-color: rgba(235, 246, 255, 0.68);
+  box-shadow: inset 0 0 26px rgba(172, 220, 255, 0.3), 0 0 34px rgba(97, 172, 255, 0.36);
+}
+
+.rainform-sol-orb__halo,
+.rainform-sol-orb__level {
+  position: absolute;
+  inset: -8px;
+  border: 1px solid rgba(149, 208, 255, 0.16);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.rainform-sol-orb__level {
+  inset: -3px;
+  background: radial-gradient(circle, rgba(128, 199, 255, 0.2), transparent 67%);
+  opacity: 0.75;
+  transition: transform 80ms linear;
+}
+
+[data-rainform-voice-state="connecting"] .rainform-sol-orb__halo,
+[data-rainform-voice-state="listening"] .rainform-sol-orb__halo,
+[data-rainform-voice-state="thinking"] .rainform-sol-orb__halo,
+[data-rainform-voice-state="speaking"] .rainform-sol-orb__halo {
+  animation: rainform-sol-breathe 1.8s ease-in-out infinite;
+}
+
+[data-rainform-voice-state="speaking"] .rainform-sol-orb__halo {
+  border-color: rgba(255, 187, 225, 0.28);
+  animation-duration: 0.9s;
+}
+
+[data-rainform-voice-state="error"] .rainform-sol-orb {
+  border-color: rgba(255, 157, 157, 0.38);
+}
+
+@keyframes rainform-sol-breathe {
+  0%, 100% { transform: scale(0.92); opacity: 0.28; }
+  50% { transform: scale(1.18); opacity: 0.92; }
+}
+
 @media (max-height: 680px) {
   .living-examples,
   .living-footer-copy {

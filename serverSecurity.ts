@@ -155,7 +155,7 @@ export function productionContentSecurityPolicy() {
     "font-src 'self' data:",
     "img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com https://*.ytimg.com",
     "connect-src 'self' https://www.youtube.com https://*.youtube.com https://www.googleapis.com https://lrclib.net wss: ws:",
-    "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com 'self'",
     "media-src 'self' blob: data:",
     "worker-src 'self' blob:",
   ].join("; ");
